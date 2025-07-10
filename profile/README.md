@@ -1,7 +1,5 @@
 ## *computor* - Your Computing Tutor
 
-![logo](https://computor.eu/computor.png)
-
 *computor* is a learning platform for programming lectures and exercises at all levels and approachable by beginners. 
 Students solve programming assignments and receive direct feedback on their solutions. 
 The software is central to programming and data science lectures in the Physics curriculum, 
