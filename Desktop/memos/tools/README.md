@@ -17,6 +17,7 @@ Default assumptions:
 - output root: `$HOME/Nextcloud/plasma/DOCUMENTS/MEETINGS`
 - note language: English
 - meeting folder selection prefers an existing archive folder when the recording date, filename, and prior metadata strongly match
+- `tools/process-memo` removes transcript artifacts after note generation by default; use `--keep-transcript` only when you explicitly want them retained
 
 ## Transcribe
 
@@ -69,3 +70,10 @@ tools/process-memo \
   --notes-language en \
   2026-03-24_computor_jf.qta
 ```
+
+By default, the one-shot command leaves only:
+
+- `MEETING_NOTES.md`
+- `TODO.md`
+
+Use `--keep-transcript` if you want to retain transcript and metadata artifacts.

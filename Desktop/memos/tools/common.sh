@@ -174,6 +174,18 @@ json_string_file() {
     jq -Rs . < "$1"
 }
 
+cleanup_transcript_artifacts() {
+    local meeting_dir="$1"
+
+    rm -f \
+        "$meeting_dir/transcript.json" \
+        "$meeting_dir/transcript.txt" \
+        "$meeting_dir/transcript.srt" \
+        "$meeting_dir/transcript.vtt" \
+        "$meeting_dir/transcript.tsv" \
+        "$meeting_dir/metadata.json"
+}
+
 pick_recorded_at() {
     local ffprobe_json="$1"
     local source_file="$2"
