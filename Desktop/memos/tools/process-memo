@@ -1,0 +1,167 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=tools/common.sh
+source "$SCRIPT_DIR/common.sh"
+
+require_cmd ffprobe
+require_cmd jq
+require_cmd mktemp
+
+usage() {
+    cat <<'EOF'
+Usage:
+  tools/process-memo [options] <audio-file>
+
+Options:
+  --output-root PATH      Meeting archive root.
+  --meeting-name NAME     Override meeting folder slug.
+  --language CODE         Whisper language override. Default: auto
+  --notes-language MODE   Meeting notes language: en, de, or match. Default: en
+  --multilingual          Mark the meeting as multilingual end-to-end.
+  --base-url URL          OpenAI-compatible transcription base URL.
+  --api-key KEY           Optional API key.
+  --model NAME            Whisper/OpenAI model field. Default: whisper-1
+  --prompt TEXT           Optional transcription prompt hint.
+  --extra-prompt TEXT     Additional instruction for note generation.
+  --force                 Overwrite transcript and notes outputs.
+  --help                  Show this help.
+EOF
+}
+
+output_root=""
+meeting_name=""
+language="auto"
+notes_language="en"
+multilingual=0
+base_url=""
+api_key=""
+model=""
+transcription_prompt=""
+extra_prompt=""
+force=0
+
+while (($# > 0)); do
+    case "$1" in
+        --output-root)
+            output_root="$2"
+            shift 2
+            ;;
+        --meeting-name)
+            meeting_name="$2"
+            shift 2
+            ;;
+        --language)
+            language="$2"
+            shift 2
+            ;;
+        --notes-language)
+            notes_language="$2"
+            shift 2
+            ;;
+        --multilingual)
+            multilingual=1
+            shift
+            ;;
+        --base-url)
+            base_url="$2"
+            shift 2
+            ;;
+        --api-key)
+            api_key="$2"
+            shift 2
+            ;;
+        --model)
+            model="$2"
+            shift 2
+            ;;
+        --prompt)
+            transcription_prompt="$2"
+            shift 2
+            ;;
+        --extra-prompt)
+            extra_prompt="$2"
+            shift 2
+            ;;
+        --force)
+            force=1
+            shift
+            ;;
+        --help|-h)
+            usage
+            exit 0
+            ;;
+        --*)
+            die "unknown option: $1"
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+(($# == 1)) || {
+    usage >&2
+    exit 1
+}
+
+audio_file="$1"
+[[ -f "$audio_file" ]] || die "audio file not found: $audio_file"
+
+transcribe_cmd=("$SCRIPT_DIR/transcribe-memo")
+generate_cmd=("$SCRIPT_DIR/generate-meeting-notes")
+
+if [[ -n "$output_root" ]]; then
+    transcribe_cmd+=(--output-root "$output_root")
+fi
+if [[ -n "$meeting_name" ]]; then
+    transcribe_cmd+=(--meeting-name "$meeting_name")
+fi
+transcribe_cmd+=(--language "$language")
+if [[ "$multilingual" -eq 1 ]]; then
+    transcribe_cmd+=(--multilingual)
+    generate_cmd+=(--multilingual)
+fi
+if [[ -n "$base_url" ]]; then
+    transcribe_cmd+=(--base-url "$base_url")
+fi
+if [[ -n "$api_key" ]]; then
+    transcribe_cmd+=(--api-key "$api_key")
+fi
+if [[ -n "$model" ]]; then
+    transcribe_cmd+=(--model "$model")
+fi
+if [[ -n "$transcription_prompt" ]]; then
+    transcribe_cmd+=(--prompt "$transcription_prompt")
+fi
+if [[ "$force" -eq 1 ]]; then
+    transcribe_cmd+=(--force)
+    generate_cmd+=(--force)
+fi
+
+generate_cmd+=(--language "$notes_language")
+if [[ -n "$extra_prompt" ]]; then
+    generate_cmd+=(--extra-prompt "$extra_prompt")
+fi
+
+"${transcribe_cmd[@]}" "$audio_file"
+
+audio_basename="$(basename "$audio_file")"
+stem="${audio_basename%.*}"
+
+tmp_dir="$(mktemp -d)"
+trap 'rm -rf "$tmp_dir"' EXIT
+ffprobe_json="$tmp_dir/ffprobe.json"
+ffprobe -hide_banner -loglevel error -show_format -show_streams -print_format json "$audio_file" > "$ffprobe_json"
+IFS=$'\t' read -r recorded_at _ < <(pick_recorded_at "$ffprobe_json" "$audio_file")
+recorded_at_local_value="$(recorded_at_local "$recorded_at")"
+recorded_date="$(recorded_date_part "$recorded_at_local_value")"
+IFS=$'\t' read -r meeting_dir _ _ < <(
+    resolve_meeting_dir "${output_root:-$(default_output_root)}" "$recorded_date" "$stem" "$meeting_name" "$audio_basename"
+)
+
+"${generate_cmd[@]}" "$meeting_dir"
+
+printf 'Processed meeting artifacts in %s\n' "$meeting_dir"

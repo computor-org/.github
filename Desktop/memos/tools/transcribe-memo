@@ -1,0 +1,273 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=tools/common.sh
+source "$SCRIPT_DIR/common.sh"
+
+require_cmd ffmpeg
+require_cmd ffprobe
+require_cmd curl
+require_cmd jq
+require_cmd mktemp
+
+usage() {
+    cat <<'EOF'
+Usage:
+  tools/transcribe-memo [options] <audio-file> [<audio-file> ...]
+
+Options:
+  --output-root PATH   Meeting archive root. Default: $HOME/Nextcloud/plasma/DOCUMENTS/MEETINGS
+  --meeting-name NAME  Override folder slug for this run.
+  --language CODE      Language override for Whisper. Default: auto
+  --multilingual       Mark the meeting as multilingual and use a mixed-language prompt.
+  --base-url URL       OpenAI-compatible transcription base URL. Default: http://127.0.0.1:8427
+  --api-key KEY        Optional API key for Authorization header.
+  --model NAME         Model name sent to the endpoint. Default: whisper-1
+  --prompt TEXT        Optional transcription prompt hint.
+  --force              Overwrite existing transcript artifacts.
+  --help               Show this help.
+EOF
+}
+
+output_root="$(default_output_root)"
+meeting_name=""
+language="auto"
+base_url="$(default_whisper_base_url)"
+api_key="$(default_whisper_api_key)"
+model="$(default_whisper_model)"
+transcription_prompt=""
+multilingual=0
+force=0
+
+declare -a audio_files=()
+
+while (($# > 0)); do
+    case "$1" in
+        --output-root)
+            output_root="$2"
+            shift 2
+            ;;
+        --meeting-name)
+            meeting_name="$2"
+            shift 2
+            ;;
+        --language)
+            language="$2"
+            shift 2
+            ;;
+        --multilingual)
+            multilingual=1
+            shift
+            ;;
+        --base-url)
+            base_url="$2"
+            shift 2
+            ;;
+        --api-key)
+            api_key="$2"
+            shift 2
+            ;;
+        --model)
+            model="$2"
+            shift 2
+            ;;
+        --prompt)
+            transcription_prompt="$2"
+            shift 2
+            ;;
+        --force)
+            force=1
+            shift
+            ;;
+        --help|-h)
+            usage
+            exit 0
+            ;;
+        --*)
+            die "unknown option: $1"
+            ;;
+        *)
+            audio_files+=("$1")
+            shift
+            ;;
+    esac
+done
+
+((${#audio_files[@]} > 0)) || {
+    usage >&2
+    exit 1
+}
+
+mkdir -p "$output_root"
+base_url="${base_url%/}"
+
+if [[ -z "$transcription_prompt" ]]; then
+    transcription_prompt="$(default_transcription_prompt "$multilingual")"
+fi
+
+curl -fsS "$base_url/healthz" >/dev/null
+
+for audio_file in "${audio_files[@]}"; do
+    [[ -f "$audio_file" ]] || die "audio file not found: $audio_file"
+
+    audio_abs="$(abs_path "$audio_file")"
+    audio_basename="$(basename "$audio_file")"
+    stem="${audio_basename%.*}"
+
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' EXIT
+
+    ffprobe_json="$tmp_dir/ffprobe.json"
+    audio_wav="$tmp_dir/audio.wav"
+    verbose_json="$tmp_dir/transcript.json"
+
+    ffprobe -hide_banner -loglevel error \
+        -show_format -show_streams -print_format json \
+        "$audio_file" > "$ffprobe_json"
+
+    IFS=$'\t' read -r recorded_at recorded_at_source < <(pick_recorded_at "$ffprobe_json" "$audio_file")
+    recorded_at_local_value="$(recorded_at_local "$recorded_at")"
+    recorded_date="$(recorded_date_part "$recorded_at_local_value")"
+    IFS=$'\t' read -r meeting_dir meeting_dir_reason slug < <(
+        resolve_meeting_dir "$output_root" "$recorded_date" "$stem" "$meeting_name" "$audio_basename"
+    )
+
+    if [[ -e "$meeting_dir/transcript.json" && "$force" -ne 1 ]]; then
+        die "transcript already exists in $meeting_dir (use --force to overwrite)"
+    fi
+
+    mkdir -p "$meeting_dir"
+
+    ffmpeg -hide_banner -loglevel error -y \
+        -i "$audio_file" \
+        -map 0:a:0 -vn -ac 1 -ar 16000 -c:a pcm_s16le \
+        "$audio_wav"
+
+    curl_args=(
+        -fsS
+        "$base_url/v1/audio/transcriptions"
+        -F "file=@$audio_wav;type=audio/wav"
+        -F "model=$model"
+        -F "response_format=verbose_json"
+    )
+
+    if [[ -n "$language" ]]; then
+        curl_args+=(-F "language=$language")
+    fi
+    if [[ -n "$transcription_prompt" ]]; then
+        curl_args+=(-F "prompt=$transcription_prompt")
+    fi
+    if [[ -n "$api_key" ]]; then
+        curl_args+=(-H "Authorization: Bearer $api_key")
+    fi
+
+    curl "${curl_args[@]}" > "$verbose_json"
+    jq empty "$verbose_json" >/dev/null
+
+    cp "$verbose_json" "$meeting_dir/transcript.json"
+    jq -r '.text' "$verbose_json" > "$meeting_dir/transcript.txt"
+    write_segment_formats \
+        "$verbose_json" \
+        "$meeting_dir/transcript.srt" \
+        "$meeting_dir/transcript.vtt" \
+        "$meeting_dir/transcript.tsv"
+
+    jq -n \
+        --arg source_file "$audio_abs" \
+        --arg source_file_name "$audio_basename" \
+        --arg recorded_at "$recorded_at" \
+        --arg recorded_at_source "$recorded_at_source" \
+        --arg recorded_at_local "$recorded_at_local_value" \
+        --arg meeting_timezone "$(default_meeting_timezone)" \
+        --arg output_dir "$(abs_path "$meeting_dir")" \
+        --arg output_dir_resolution "$meeting_dir_reason" \
+        --arg output_dir_slug "$slug" \
+        --arg whisper_base_url "$base_url" \
+        --arg whisper_model "$model" \
+        --arg language_request "$language" \
+        --argjson multilingual "$multilingual" \
+        --arg transcription_prompt "$transcription_prompt" \
+        --slurpfile ffprobe "$ffprobe_json" \
+        --slurpfile transcript "$verbose_json" \
+        '{
+            source_file: $source_file,
+            source_file_name: $source_file_name,
+            output_dir: $output_dir,
+            output_dir_resolution: $output_dir_resolution,
+            output_dir_slug: $output_dir_slug,
+            recorded_at: $recorded_at,
+            recorded_at_source: $recorded_at_source,
+            recorded_at_local: $recorded_at_local,
+            meeting_timezone: $meeting_timezone,
+            meeting_language_mode: (if $multilingual == 1 then "multilingual" else "single_or_unspecified" end),
+            whisper_request: {
+                base_url: $whisper_base_url,
+                model: $whisper_model,
+                language: $language_request,
+                multilingual: ($multilingual == 1),
+                prompt: $transcription_prompt
+            },
+            ffprobe: $ffprobe[0],
+            transcription_summary: {
+                language: ($transcript[0].language // "unknown"),
+                duration_seconds: ($transcript[0].duration // 0),
+                segment_count: (($transcript[0].segments // []) | length),
+                text_length: (($transcript[0].text // "") | length),
+                adjacent_duplicate_segments: (
+                    [range(1; (($transcript[0].segments // []) | length)) as $i
+                     | (($transcript[0].segments[$i - 1].text // "")
+                        | ascii_downcase
+                        | gsub("\\s+"; " ")
+                        | sub("^ "; "")
+                        | sub(" $"; "")) as $prev
+                     | (($transcript[0].segments[$i].text // "")
+                        | ascii_downcase
+                        | gsub("\\s+"; " ")
+                        | sub("^ "; "")
+                        | sub(" $"; "")) as $curr
+                     | select($prev != "" and $prev == $curr)]
+                    | length
+                ),
+                max_consecutive_duplicate_segments: (
+                    reduce (($transcript[0].segments // [])[]) as $seg (
+                        {prev: "", run: 0, max: 0};
+                        (($seg.text // "")
+                         | ascii_downcase
+                         | gsub("\\s+"; " ")
+                         | sub("^ "; "")
+                         | sub(" $"; "")) as $curr
+                        | if $curr == "" then .
+                          elif .prev == $curr then
+                            .run += 1 | .max = ([.max, .run] | max)
+                          else
+                            .prev = $curr | .run = 1 | .max = ([.max, 1] | max)
+                          end
+                    )
+                    | .max
+                ),
+                suspicious_repetition_detected: (
+                    (reduce (($transcript[0].segments // [])[]) as $seg (
+                        {prev: "", run: 0, max: 0};
+                        (($seg.text // "")
+                         | ascii_downcase
+                         | gsub("\\s+"; " ")
+                         | sub("^ "; "")
+                         | sub(" $"; "")) as $curr
+                        | if $curr == "" then .
+                          elif .prev == $curr then
+                            .run += 1 | .max = ([.max, .run] | max)
+                          else
+                            .prev = $curr | .run = 1 | .max = ([.max, 1] | max)
+                          end
+                    ) | .max) >= 5
+                )
+            }
+        }' > "$meeting_dir/metadata.json"
+
+    printf 'Wrote transcript artifacts to %s\n' "$meeting_dir"
+
+    rm -rf "$tmp_dir"
+    trap - EXIT
+done

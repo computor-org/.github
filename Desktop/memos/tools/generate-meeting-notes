@@ -1,0 +1,364 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=tools/common.sh
+source "$SCRIPT_DIR/common.sh"
+
+require_cmd claude
+require_cmd jq
+require_cmd mktemp
+
+collapse_repeated_segments() {
+    awk '
+        function flush_run() {
+            if (count == 0) {
+                return
+            }
+            if (count > 3) {
+                print previous
+            } else {
+                for (i = 0; i < count; i++) {
+                    print previous
+                }
+            }
+        }
+
+        {
+            if (NR == 1) {
+                previous = $0
+                count = 1
+                next
+            }
+
+            if ($0 == previous) {
+                count++
+                next
+            }
+
+            flush_run()
+            previous = $0
+            count = 1
+        }
+
+        END {
+            flush_run()
+        }
+    '
+}
+
+write_timestamped_notes_view() {
+    local transcript_json="$1"
+
+    jq -r '.segments[]? | [(.start // 0), (.end // 0), (.text // "")] | @tsv' "$transcript_json" \
+        | awk -F '\t' '
+            function normalize(text) {
+                gsub(/[[:space:]]+/, " ", text)
+                sub(/^ /, "", text)
+                sub(/ $/, "", text)
+                return text
+            }
+
+            function flush_run(    start_label, end_label) {
+                if (count == 0 || previous == "") {
+                    return
+                }
+
+                start_label = start_timestamp
+                end_label = end_timestamp
+
+                if (count > 3) {
+                    printf "[%s-%s] %s\n", start_label, end_label, previous
+                } else {
+                    for (i = 0; i < count; i++) {
+                        printf "[%s-%s] %s\n", starts[i], ends[i], previous
+                    }
+                }
+            }
+
+            {
+                text = normalize($3)
+                if (text == "") {
+                    next
+                }
+
+                cmd = "TZ=UTC date -u -r " int($1) " +%H:%M:%S"
+                cmd | getline start_label
+                close(cmd)
+                cmd = "TZ=UTC date -u -r " int($2) " +%H:%M:%S"
+                cmd | getline end_label
+                close(cmd)
+
+                if (NR == 1 || text != previous) {
+                    flush_run()
+                    delete starts
+                    delete ends
+                    previous = text
+                    count = 1
+                    start_timestamp = start_label
+                    end_timestamp = end_label
+                    starts[0] = start_label
+                    ends[0] = end_label
+                    next
+                }
+
+                starts[count] = start_label
+                ends[count] = end_label
+                end_timestamp = end_label
+                count++
+            }
+
+            END {
+                flush_run()
+            }
+        '
+}
+
+usage() {
+    cat <<'EOF'
+Usage:
+  tools/generate-meeting-notes [options] <meeting-folder|transcript.txt>
+
+Options:
+  --extra-prompt TEXT  Additional instructions appended to the Claude prompt.
+  --language MODE      en, de, or match. Default: en
+  --multilingual       Treat the meeting as potentially code-switching / mixed-language.
+  --force              Overwrite existing MEETING_NOTES.md and TODO.md.
+  --help               Show this help.
+EOF
+}
+
+extra_prompt=""
+notes_language="en"
+multilingual=0
+force=0
+
+while (($# > 0)); do
+    case "$1" in
+        --extra-prompt)
+            extra_prompt="$2"
+            shift 2
+            ;;
+        --language)
+            notes_language="$2"
+            shift 2
+            ;;
+        --multilingual)
+            multilingual=1
+            shift
+            ;;
+        --force)
+            force=1
+            shift
+            ;;
+        --help|-h)
+            usage
+            exit 0
+            ;;
+        --*)
+            die "unknown option: $1"
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+(($# == 1)) || {
+    usage >&2
+    exit 1
+}
+
+target="$1"
+
+if [[ -d "$target" ]]; then
+    meeting_dir="$(abs_path "$target")"
+    transcript_file="$meeting_dir/transcript.txt"
+else
+    [[ -f "$target" ]] || die "target not found: $target"
+    transcript_file="$(abs_path "$target")"
+    meeting_dir="$(dirname "$transcript_file")"
+fi
+
+[[ -f "$transcript_file" ]] || die "transcript.txt not found at $transcript_file"
+
+metadata_file="$meeting_dir/metadata.json"
+transcript_json="$meeting_dir/transcript.json"
+notes_file="$meeting_dir/MEETING_NOTES.md"
+todo_file="$meeting_dir/TODO.md"
+
+if [[ ( -e "$notes_file" || -e "$todo_file" ) && "$force" -ne 1 ]]; then
+    die "meeting notes already exist in $meeting_dir (use --force to overwrite)"
+fi
+
+metadata_summary='{}'
+if [[ -f "$metadata_file" ]]; then
+    metadata_summary="$(jq -c '
+        {
+            source_file,
+            source_file_name,
+            output_dir,
+            output_dir_resolution,
+            output_dir_slug,
+            recorded_at,
+            recorded_at_local,
+            recorded_at_source,
+            meeting_timezone,
+            meeting_language_mode,
+            transcription_summary,
+            whisper_request: (.whisper_request // {}),
+            ffprobe_format: (.ffprobe.format // {}),
+            audio_streams: ((.ffprobe.streams // []) | map(select(.codec_type == "audio") | {
+                index,
+                codec_name,
+                sample_rate,
+                channels,
+                channel_layout,
+                duration,
+                bit_rate,
+                tags
+            }))
+        }
+    ' "$metadata_file")"
+fi
+
+if [[ "$multilingual" -ne 1 && -f "$metadata_file" ]]; then
+    multilingual="$(jq -r '
+        if .meeting_language_mode == "multilingual"
+           or (.whisper_request.multilingual // false)
+           or (.transcription_summary.language // "") == "mixed"
+        then 1 else 0 end
+    ' "$metadata_file")"
+fi
+
+if [[ "$notes_language" == "match" ]]; then
+    if [[ -f "$transcript_json" ]]; then
+        detected_language="$(jq -r '.language // empty' "$transcript_json")"
+        if [[ "$detected_language" == "de" ]]; then
+            notes_language="de"
+        else
+            notes_language="en"
+        fi
+    else
+        notes_language="en"
+    fi
+fi
+
+case "$notes_language" in
+    en)
+        language_instruction="Write the notes in English."
+        ;;
+    de)
+        language_instruction="Write the notes in German."
+        ;;
+    *)
+        die "unsupported --language value: $notes_language"
+        ;;
+esac
+
+if [[ "$multilingual" -eq 1 ]]; then
+    multilingual_instruction="The meeting may switch between German and English within the same conversation. Keep names, technical terms, and short quoted phrases in the most plausible language from context."
+else
+    multilingual_instruction="The meeting language may still contain occasional foreign terms or code identifiers; preserve them accurately."
+fi
+
+schema='{
+  "type":"object",
+  "properties":{
+    "meeting_notes_markdown":{"type":"string"},
+    "todo_markdown":{"type":"string"}
+  },
+  "required":["meeting_notes_markdown","todo_markdown"],
+  "additionalProperties":false
+}'
+
+tmp_dir="$(mktemp -d)"
+trap 'rm -rf "$tmp_dir"' EXIT
+prompt_file="$tmp_dir/prompt.txt"
+response_file="$tmp_dir/response.json"
+transcript_for_notes_file="$tmp_dir/transcript_for_notes.txt"
+
+if [[ -f "$transcript_json" ]]; then
+    write_timestamped_notes_view "$transcript_json" > "$transcript_for_notes_file"
+else
+    cp "$transcript_file" "$transcript_for_notes_file"
+fi
+
+cat > "$prompt_file" <<EOF
+Generate concise but complete meeting documentation from the supplied metadata and transcript.
+
+Important constraints:
+- The transcript came from Whisper and may contain typos, homophone errors, bad punctuation, and misheard technical terms.
+- The meeting may include domain-specific jargon, acronyms, code identifiers, product names, project names, and mixed-language speech. Important context may include computor, Netidee, fusion plasma physics, university teaching, academic administration, HPC, and computing. Correct obvious transcription mistakes when strongly supported by context, but do not invent unsupported details.
+- $multilingual_instruction
+- Ignore obvious transcript corruption such as repeated loops, duplicated passages, or clearly broken wording bursts.
+- If the supplied transcript is segment-based, it is timestamped and exact consecutive duplicate segment runs longer than 3 entries were already collapsed before summarization.
+- Infer attendees conservatively. A person is only likely present if the transcript strongly suggests they are participating in the conversation through direct speech, direct address, first-person responses, or other clear turn-taking evidence.
+- Use a high bar for Likely Present. Direct address plus a nearby response is strong evidence. Mere discussion of someone's work or responsibilities is not.
+- Do not infer that someone attended merely because they are discussed, assigned work, thanked, or described as doing something.
+- If a name is acoustically ambiguous, internally inconsistent, or only weakly supported, keep that uncertainty explicit instead of forcing a confident identity. Fewer names is better than wrong names.
+- If the transcript supports a participant's role but not their name, use a role-based label such as returning participant, meeting lead, or unidentified speaker instead of guessing a real person.
+- Assign TODOs to named people whenever the transcript supports that assignment.
+- Do not assign TODOs to uncertain identities. If the owner is unclear, keep the wording neutral or leave it unassigned.
+- Only create a General / Unassigned TODO section if it is impossible to assign an item to a person from the text.
+- If there was no explicit agenda, infer practical discussion topics from the transcript.
+- Distinguish decisions from open discussion.
+- Prefer concise, scannable bullets over long prose.
+- For action items, use specific, actionable wording. Include due dates or timing only when explicit in the transcript.
+- Do not turn people mentioned historically into meeting attendees or task owners.
+- If timing or participants are uncertain, say so explicitly rather than pretending certainty.
+- Treat the recording filename, matched meeting folder name, and metadata as weak context only. They can help identify the meeting but must not override the transcript.
+- If the transcript suggests multiple conflicting candidate decisions, names, or trigger tags, do not flatten them into one confident final answer unless the resolution is explicit. Keep the conflict visible under discussion or open questions.
+- $language_instruction
+
+Return JSON with exactly these fields:
+1. meeting_notes_markdown
+2. todo_markdown
+
+Additional user instruction:
+${extra_prompt:-none}
+
+Formatting requirements for meeting_notes_markdown:
+- Valid Markdown only.
+- Start with: # Meeting Notes
+- Then include:
+  - Date/Time
+  - Source Audio
+  - Transcript Language
+  - Confidence Note
+- Then these sections in this order:
+  - ## Likely Present
+  - ## Other People Mentioned
+  - ## Topics and Outcomes
+  - ## Decisions
+  - ## Open Questions / Risks
+  - ## Action Items
+- If there are no solid decisions or open questions, say so briefly rather than inventing them.
+
+Formatting requirements for todo_markdown:
+- Valid Markdown only.
+- Start with: # TODO
+- Then include:
+  - ## By Person
+  - one ### subsection per identified person with bullet items
+- Include ## General / Unassigned only if needed.
+
+Metadata JSON:
+$metadata_summary
+
+Transcript:
+$(cat "$transcript_for_notes_file")
+EOF
+
+claude -p \
+    --output-format json \
+    --json-schema "$schema" \
+    --permission-mode dontAsk \
+    --tools "" \
+    < "$prompt_file" > "$response_file"
+
+jq -r '.structured_output.meeting_notes_markdown' "$response_file" > "$notes_file"
+jq -r '.structured_output.todo_markdown' "$response_file" > "$todo_file"
+
+printf 'Wrote meeting notes to %s\n' "$meeting_dir"
