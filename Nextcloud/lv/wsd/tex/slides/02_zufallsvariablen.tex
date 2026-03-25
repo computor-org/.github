@@ -1,0 +1,554 @@
+\documentclass[aspectratio=169,professionalfonts]{beamer}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[ngerman]{babel}
+\usepackage{lmodern}
+\usepackage{hyperref}
+\usepackage{tikz}
+\usepackage{xcolor}
+\usetikzlibrary{decorations.pathreplacing}
+
+\definecolor{wsdblue}{RGB}{18,53,91}
+\definecolor{wsdgray}{RGB}{88,94,102}
+\definecolor{wsdlight}{RGB}{240,243,246}
+
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}{%
+  \leavevmode%
+  \hbox{%
+    \begin{beamercolorbox}[wd=\paperwidth,ht=2.8ex,dp=1.2ex,leftskip=1em,rightskip=1em]{author in head/foot}%
+      \color{wsdgray}\scriptsize Christopher Albert \hfill Wahrscheinlichkeitstheorie, Statistik und Datenanalyse \hfill \insertframenumber
+    \end{beamercolorbox}%
+  }%
+}
+\setbeamertemplate{headline}{}
+\setbeamercolor{background canvas}{bg=white}
+\setbeamercolor{normal text}{fg=black,bg=white}
+\setbeamercolor{structure}{fg=wsdblue}
+\setbeamercolor{frametitle}{fg=wsdblue,bg=white}
+\setbeamerfont{title}{series=\bfseries,size=\LARGE}
+\setbeamerfont{frametitle}{series=\bfseries,size=\Large}
+\setbeamerfont{subtitle}{size=\large}
+
+\title{Wahrscheinlichkeitstheorie, Statistik und Datenanalyse}
+\author{Christopher Albert}
+\date{26. M\"arz 2026}
+
+\begin{document}
+
+\begin{frame}[plain]
+  \vspace{1.2cm}
+  {\usebeamerfont{title}\color{wsdblue}\inserttitle\par}
+  \vspace{0.5cm}
+  {\usebeamerfont{subtitle}VO 2: Zufallsvariable und Mittelwert\par}
+  \vspace{0.3cm}
+  {\large Christopher Albert\par}
+  \vfill
+  {\large 26. M\"arz 2026\par}
+\end{frame}
+
+\begin{frame}
+  \frametitle{R\"uckblick auf VO 1: Grundbegriffe}
+
+  \begin{itemize}
+    \item \textbf{Versuch}: ein einzelner Zufallsvorgang, z.B. einmal w\"urfeln
+    \item \textbf{Ergebnis} \(\omega\): ein einzelner m\"oglicher Ausgang, z.B. die Zahl \(3\)
+    \item \textbf{Ergebnisraum} \(\mathcal G\): die Menge aller m\"oglichen Ergebnisse, z.B.
+    \[
+      \mathcal G=\{1,2,3,4,5,6\}
+    \]
+    \item \textbf{Ereignis}: eine Teilmenge von \(\mathcal G\), z.B. \(\{2,4,6\}\)
+    \item \textbf{Elementarereignis}: ein Ereignis mit genau einem Ergebnis, also \(\{\omega\}\), z.B. \(\{3\}\)
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Von Ergebnissen zu Zahlen}
+
+  \begin{columns}[T,onlytextwidth]
+    \column{0.48\textwidth}
+    \textbf{W\"urfel}
+    \begin{itemize}
+      \item Ergebnisse: \(1,2,3,4,5,6\)
+      \item hier sind die Ergebnisse schon Zahlen
+      \item Ereignisse sind Teilmengen, z.B.
+      \[
+        \{1,2\},\qquad \{2,4,6\}
+      \]
+    \end{itemize}
+
+    \column{0.48\textwidth}
+    \textbf{Karte ziehen}
+    \begin{itemize}
+      \item Ergebnisse: konkrete Karten
+      \item zun\"achst keine nat\"urlichen Zahlen
+      \item zum Rechnen braucht man eine Abbildung auf reelle Zahlen
+    \end{itemize}
+  \end{columns}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Zufallsvariable}
+
+  \begin{block}{Definition}
+    Eine Zufallsvariable ist eine Abbildung
+    \[
+      X:\mathcal G\to \mathbb R,\qquad \omega \mapsto x=X(\omega)
+    \]
+    die jedem \textbf{Ergebnis} \(\omega\in\mathcal G\) eine reelle Zahl zuordnet.
+  \end{block}
+
+  \vspace{0.3cm}
+
+  \begin{itemize}
+    \item \(x\): Realisierung von \(X\)
+    \item \(R\): Wertebereich der möglichen Realisierungen
+    \item wichtig: \textbf{nicht} jedem Ereignis, sondern jedem Ergebnis
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Beispiel 1: Identische Abbildung}
+
+  \[
+    X(\omega)=\omega
+  \]
+
+  \begin{center}
+    \input{skriptum/Figures/fig_random_variable_identity.tex}
+  \end{center}
+
+  \vspace{0.1cm}
+
+  \begin{itemize}
+    \item beim Würfel ist \(X(\omega)=\omega\) die naheliegende Wahl
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Beispiel 2: Indikatorfunktion}
+
+  \[
+    I_{A_{\mathrm{gerade}}}(\omega)=
+    \begin{cases}
+      1,& \omega\in\{2,4,6\}\\
+      0,& \text{sonst}
+    \end{cases}
+  \]
+
+  \begin{center}
+    \input{skriptum/Figures/fig_random_variable_indicator.tex}
+  \end{center}
+
+  \vspace{0.2cm}
+
+  \begin{itemize}
+    \item \(I_{A_{\mathrm{gerade}}}(\omega)\) nimmt nur die Werte \(0\) und \(1\) an
+    \item so markiert die Zufallsvariable genau das Ereignis \(A_{\mathrm{gerade}}=\{2,4,6\}\)
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Ereignisse \"uber eine Zufallsvariable definieren}
+
+  \[
+    A_{\mathrm{gerade}}=\{\omega\in\mathcal G:\,I_{A_{\mathrm{gerade}}}(\omega)>0.5\}
+  \]
+
+  \begin{center}
+    \input{skriptum/Figures/fig_random_variable_levelset.tex}
+  \end{center}
+
+  \vspace{0.2cm}
+
+  \begin{itemize}
+    \item allgemeiner:
+    \[
+      \{\omega\in\mathcal G:\,X(\omega)\in B\}
+    \]
+    \item Ereignisse erscheinen als Urbilder von Wertebereichen
+    \item das ist abstrakter und sp\"ater viel flexibler
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{R\"uckblick: Stichprobe im Produktraum}
+
+  \[
+    \mathcal G^N=\underbrace{\mathcal G\times\cdots\times\mathcal G}_{N\text{-mal}}
+  \]
+
+  \[
+    \boldsymbol{\omega}=(\omega_1,\ldots,\omega_N)\in\mathcal G^N
+  \]
+
+  \begin{itemize}
+    \item das haben wir bei der Wiederholung eines Versuchs schon in VO1 eingef\"uhrt
+    \item eine Stichprobe vom Umfang \(N\) ist ein geordnetes \(N\)-Tupel von Ergebnissen
+    \item darauf definieren wir jetzt Statistiken wie den Stichprobenmittelwert
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Beispiel: Dreimal Münzwurf}
+
+  \[
+    \mathcal G^3=\{K,Z\}^3
+  \]
+
+  \begin{center}
+    \begin{tabular}{c c}
+      Ergebnis & Zahl der K\"opfe \\
+      \hline
+      \((K,K,K)\) & \(3\) \\
+      \((K,K,Z)\) & \(2\) \\
+      \((K,Z,K)\) & \(2\) \\
+      \((Z,K,K)\) & \(2\) \\
+      \((K,Z,Z)\) & \(1\) \\
+      \((Z,K,Z)\) & \(1\) \\
+      \((Z,Z,K)\) & \(1\) \\
+      \((Z,Z,Z)\) & \(0\)
+    \end{tabular}
+  \end{center}
+
+  \vspace{0.2cm}
+
+  \[
+    P(\omega_1,\omega_2,\omega_3)=P_{\omega_1}\,P_{\omega_2}\,P_{\omega_3}
+  \]
+\end{frame}
+
+\begin{frame}
+  \frametitle{Funktionen von Zufallsvariablen}
+
+  \begin{itemize}
+    \item aus einer Zufallsvariablen \(X\) kann man wieder neue machen:
+    \[
+      Y=f(X)
+    \]
+    \item jedem Ergebnis \(\omega\) wird dann der Wert \(f(X(\omega))\) zugeordnet
+    \item damit lassen sich Gewinne, Schwellen, Indikatoren oder Klassifikationen beschreiben
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Mittelwert einer diskreten Zufallsvariablen}
+
+  \[
+    \langle X\rangle=\sum_{\omega\in\mathcal G} X(\omega)\,P_\omega
+  \]
+
+  \vspace{0.35cm}
+
+  \begin{itemize}
+    \item gewichtete Summe der Werte mit ihren Wahrscheinlichkeiten
+    \item oft auch \textbf{Erwartungswert} genannt
+    \item wir sagen hier bevorzugt \textbf{Mittelwert}
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[plain]
+\end{frame}
+
+\begin{frame}
+  \frametitle{Fairer W\"urfel: Was ist der Mittelwert?}
+
+  \[
+    X(\omega)=\omega,\qquad P_n=\frac{1}{6}
+  \]
+
+  \vspace{0.35cm}
+
+  \[
+    \langle X\rangle
+    =\frac{1}{6}\sum_{n=1}^{6} n
+    =\frac{1}{6}\cdot\frac{6\cdot 7}{2}
+    =3.5
+  \]
+
+  \vspace{0.35cm}
+
+  \begin{itemize}
+    \item genau deshalb ist \glqq Mittelwert\grqq\ hier das bessere Wort
+    \item niemand erwartet, dass der W\"urfel jemals \(3.5\) zeigt
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Mittelwert versus Stichprobenmittelwert}
+
+  \begin{columns}[T,onlytextwidth]
+    \column{0.48\textwidth}
+    \textbf{Mittelwert \(\langle X\rangle\)}
+    \begin{itemize}
+      \item fixer Kennwert der Verteilung
+      \item keine Zufallsvariable
+      \item auch: Erwartungswert
+    \end{itemize}
+
+    \column{0.48\textwidth}
+    \textbf{Stichprobenmittelwert \(\overline X\)}
+    \begin{itemize}
+      \item aus beobachteten Daten berechnet
+      \item Statistik auf dem Produktraum \(\mathcal G^N\)
+      \item Sch\"atzer für \(\langle X\rangle\)
+    \end{itemize}
+  \end{columns}
+
+  \vspace{0.3cm}
+
+  \[
+    \overline X(\omega_1,\ldots,\omega_N)=\frac{1}{N}\sum_{i=1}^{N}X(\omega_i)
+  \]
+\end{frame}
+
+\begin{frame}
+  \frametitle{Linearit\"at des Mittelwerts}
+
+  \[
+    \langle \alpha f(X)+\beta g(X)\rangle
+    =
+    \alpha \langle f(X)\rangle+\beta \langle g(X)\rangle
+  \]
+
+  \vspace{0.4cm}
+
+  \begin{itemize}
+    \item Konstanten kann man herausziehen
+    \item Summen kann man im Mittel trennen
+    \item wenn alles doppelt so gro\ss\ ist, ist es im Mittel auch doppelt so gro\ss
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Momente}
+
+  \[
+    m_i=\langle X^i\rangle
+  \]
+
+  \vspace{0.3cm}
+
+  \begin{itemize}
+    \item das \(i\)-te Moment ist der Mittelwert der Potenz \(X^i\)
+    \item \(m_0=1\) wegen der Normierung
+    \item \(m_1=\langle X\rangle\), \quad \(m_2=\langle X^2\rangle\), \quad \(m_3=\langle X^3\rangle\)
+    \item Momente charakterisieren die Verteilung feiner als nur ihr Mittelwert
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Zentrale Momente und Varianz}
+
+  \[
+    \mu_i=\langle (X-\langle X\rangle)^i\rangle
+  \]
+
+  \[
+    \mathrm{Var}(X)=\sigma_X^2
+    =
+    \langle (X-\langle X\rangle)^2\rangle
+    =
+    \langle X^2\rangle-\langle X\rangle^2
+  \]
+
+  \vspace{0.25cm}
+
+  \begin{itemize}
+    \item zentrale Momente messen Abweichungen um den Mittelwert
+    \item die Varianz ist das zweite zentrale Moment
+    \item \glqq Verschiebungssatz\grqq: zweites nichtzentrales Moment minus Quadrat des Mittelwerts
+  \end{itemize}
+\end{frame}
+
+\begin{frame}[plain]
+\end{frame}
+
+\begin{frame}
+  \frametitle{Fairer W\"urfel: Varianz und Standardabweichung}
+
+  \[
+    \langle X^2\rangle=\frac{1}{6}\sum_{n=1}^{6} n^2=\frac{91}{6}\approx 15.17
+  \]
+
+  \[
+    \mathrm{Var}(X)=\langle X^2\rangle-\langle X\rangle^2
+    =\frac{91}{6}-3.5^2
+    =\frac{35}{12}\approx 2.92
+  \]
+
+  \[
+    \sigma_X=\sqrt{\mathrm{Var}(X)}=\sqrt{\frac{35}{12}}\approx 1.71
+  \]
+\end{frame}
+
+\begin{frame}
+  \frametitle{Kennzahl der Verteilung oder Statistik?}
+
+  \begin{columns}[T,onlytextwidth]
+    \column{0.48\textwidth}
+    \textbf{Kennzahlen der Verteilung}
+    \begin{itemize}
+      \item Mittelwert
+      \item Momente
+      \item Varianz
+      \item Standardabweichung
+    \end{itemize}
+
+    \column{0.48\textwidth}
+    \textbf{Statistiken aus Daten}
+    \begin{itemize}
+      \item Stichprobenmittelwert
+      \item Stichprobenvarianz
+      \item h\"angen von der konkreten Stichprobe ab
+      \item n\"ahern sich bei gro\ss em \(N\) den wahren Kennzahlen an
+    \end{itemize}
+  \end{columns}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Standardfehler des Stichprobenmittelwerts}
+
+  \[
+    \mathrm{SE}(\overline X)=\frac{\sigma_X}{\sqrt N}
+  \]
+
+  \vspace{0.3cm}
+
+  \begin{itemize}
+    \item misst die Streuung des Stichprobenmittelwerts, nicht der Einzelwerte
+    \item f\"allt nur wie \(1/\sqrt N\)
+    \item mehr Daten helfen, aber nicht linear
+    \item sp\"ater verbinden wir das mit dem Gesetz der gro\ss en Zahlen
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Stichprobenvarianz}
+
+  \[
+    s^2=\frac{1}{N-1}\sum_{i=1}^{N}(x_i-\overline x)^2
+  \]
+
+  \vspace{0.3cm}
+
+  \begin{itemize}
+    \item wichtig: \(N-1\), nicht \(N\)
+    \item sonst untersch\"atzt man die Streuung systematisch
+    \item Grund: der Mittelwert \(\overline x\) wurde aus denselben Daten schon gesch\"atzt
+    \item bei kleinen Stichproben ist dieser Unterschied besonders relevant
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Bild: Gleicher Mittelwert, andere Varianz}
+
+  \[
+    \langle X\rangle = 3.5 \qquad \text{in beiden Verteilungen}
+  \]
+
+  \begin{center}
+    \begin{tikzpicture}[x=1.15cm,y=0.58cm]
+      \draw[red!75!black,dashed,thick] (3.5,0.5) -- (3.5,7.0);
+      \node[red!75!black,anchor=south,font=\small] at (3.5,7.0) {Mittelwert \(3.5\)};
+
+      \node[anchor=east,font=\small\bfseries] at (0.35,5.55) {enger};
+      \draw[thick] (0.7,4.7) -- (6.3,4.7);
+      \foreach \x in {1,...,6} {
+        \draw[thick] (\x,4.58) -- (\x,4.82);
+        \node[font=\scriptsize] at (\x,4.2) {\x};
+      }
+      \foreach \y in {5.1,5.45,5.8,6.15} {
+        \fill[wsdblue] (3,\y) circle (2.6pt);
+        \fill[wsdblue] (4,\y) circle (2.6pt);
+      }
+      \node[anchor=west,font=\small] at (6.45,5.55) {\(P(3)=P(4)=\frac12\)};
+      \node[anchor=west,font=\small] at (6.45,5.0) {\(\mathrm{Var}(X)=0.25\)};
+
+      \node[anchor=east,font=\small\bfseries] at (0.35,2.25) {breiter};
+      \draw[thick] (0.7,1.4) -- (6.3,1.4);
+      \foreach \x in {1,...,6} {
+        \draw[thick] (\x,1.28) -- (\x,1.52);
+        \node[font=\scriptsize] at (\x,0.9) {\x};
+      }
+      \foreach \y in {1.8,2.15,2.5,2.85} {
+        \fill[wsdblue] (1,\y) circle (2.6pt);
+        \fill[wsdblue] (6,\y) circle (2.6pt);
+      }
+      \node[anchor=west,font=\small] at (6.45,2.25) {\(P(1)=P(6)=\frac12\)};
+      \node[anchor=west,font=\small] at (6.45,1.7) {\(\mathrm{Var}(X)=6.25\)};
+    \end{tikzpicture}
+  \end{center}
+
+  \vspace{0.15cm}
+
+  \begin{itemize}
+    \item der Mittelwert markiert die Lage des Schwerpunkts
+    \item die Varianz misst, wie weit die Wahrscheinlichkeitsmasse um diesen Schwerpunkt verteilt ist
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Bild: Gleicher Stichprobenmittelwert, andere Stichprobenvarianz}
+
+  \[
+    \overline x = 3.5 \qquad \text{in beiden Stichproben}
+  \]
+
+  \begin{center}
+    \begin{tikzpicture}[x=1.15cm,y=0.58cm]
+      \draw[red!75!black,dashed,thick] (3.5,0.5) -- (3.5,6.4);
+      \node[red!75!black,anchor=south,font=\small] at (3.5,6.4) {Stichprobenmittelwert \(3.5\)};
+
+      \node[anchor=east,font=\small\bfseries] at (0.35,5.15) {Stichprobe A};
+      \draw[thick] (0.7,4.3) -- (6.3,4.3);
+      \foreach \x in {1,...,6} {
+        \draw[thick] (\x,4.18) -- (\x,4.42);
+        \node[font=\scriptsize] at (\x,3.8) {\x};
+      }
+      \fill[wsdblue] (3,4.7) circle (2.8pt);
+      \fill[wsdblue] (3,5.05) circle (2.8pt);
+      \fill[wsdblue] (4,4.7) circle (2.8pt);
+      \fill[wsdblue] (4,5.05) circle (2.8pt);
+      \node[anchor=west,font=\small] at (6.45,5.15) {\(3,3,4,4\)};
+      \node[anchor=west,font=\small] at (6.45,4.6) {\(s^2=\frac13\)};
+
+      \node[anchor=east,font=\small\bfseries] at (0.35,2.15) {Stichprobe B};
+      \draw[thick] (0.7,1.3) -- (6.3,1.3);
+      \foreach \x in {1,...,6} {
+        \draw[thick] (\x,1.18) -- (\x,1.42);
+        \node[font=\scriptsize] at (\x,0.8) {\x};
+      }
+      \fill[wsdblue] (1,1.7) circle (2.8pt);
+      \fill[wsdblue] (2,1.7) circle (2.8pt);
+      \fill[wsdblue] (5,1.7) circle (2.8pt);
+      \fill[wsdblue] (6,1.7) circle (2.8pt);
+      \node[anchor=west,font=\small] at (6.45,2.15) {\(1,2,5,6\)};
+      \node[anchor=west,font=\small] at (6.45,1.6) {\(s^2=\frac{17}{3}\)};
+    \end{tikzpicture}
+  \end{center}
+
+  \vspace{0.15cm}
+
+  \begin{itemize}
+    \item der Stichprobenmittelwert beschreibt die Lage der beobachteten Daten
+    \item die Stichprobenvarianz beschreibt ihre Streuung um diesen gesch\"atzten Mittelpunkt
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Bis Hierher}
+
+  \begin{itemize}
+    \item Zufallsvariablen bilden Ergebnisse auf reelle Zahlen ab
+    \item Ereignisse kann man \"uber Zufallsvariablen als Urbilder definieren
+    \item bei Wiederholung entsteht nat\"urlich ein Produktraum
+    \item Mittelwert, Momente, Varianz und Standardabweichung sind Kennzahlen der Verteilung
+    \item Stichprobenmittelwert und Stichprobenvarianz sind Statistiken aus endlichen Daten
+    \item gleicher Mittelwert hei\ss t noch nicht gleiche Streuung
+    \item der Standardfehler beschreibt die Unsicherheit des Stichprobenmittelwerts
+  \end{itemize}
+\end{frame}
+
+\end{document}
