@@ -20,12 +20,6 @@ def save_track_csv(path, t, x, y):
     np.savetxt(path, rows, delimiter=",", header="t,x,y", comments="")
 
 
-def load_track_csv(path):
-    """Read a 't,x,y' CSV. Returns three 1-D float arrays."""
-    rows = np.loadtxt(path, delimiter=",", skiprows=1)
-    return rows[:, 0], rows[:, 1], rows[:, 2]
-
-
 def sine_sidecar_path(csv_path):
     """Path for the sine-params sidecar next to csv_path."""
     stem, _ = os.path.splitext(csv_path)
