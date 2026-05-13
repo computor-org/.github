@@ -8,7 +8,7 @@ These scripts turn local voice memos into transcript artifacts and meeting notes
 - `ffprobe`
 - `curl`
 - `jq`
-- `claude`
+- `codex`
 - local `voxtype` HTTP transcription service
 
 Default assumptions:

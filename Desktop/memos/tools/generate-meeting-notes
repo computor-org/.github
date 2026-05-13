@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=tools/common.sh
 source "$SCRIPT_DIR/common.sh"
 
-require_cmd claude
+require_cmd codex
 require_cmd jq
 require_cmd mktemp
 
@@ -121,7 +121,7 @@ Usage:
   tools/generate-meeting-notes [options] <meeting-folder|transcript.txt>
 
 Options:
-  --extra-prompt TEXT  Additional instructions appended to the Claude prompt.
+  --extra-prompt TEXT  Additional instructions appended to the Codex prompt.
   --language MODE      en, de, or match. Default: en
   --multilingual       Treat the meeting as potentially code-switching / mixed-language.
   --force              Overwrite existing MEETING_NOTES.md and TODO.md.
@@ -277,7 +277,10 @@ tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 prompt_file="$tmp_dir/prompt.txt"
 response_file="$tmp_dir/response.json"
+schema_file="$tmp_dir/schema.json"
 transcript_for_notes_file="$tmp_dir/transcript_for_notes.txt"
+
+printf '%s\n' "$schema" > "$schema_file"
 
 if [[ -f "$transcript_json" ]]; then
     write_timestamped_notes_view "$transcript_json" > "$transcript_for_notes_file"
@@ -351,14 +354,16 @@ Transcript:
 $(cat "$transcript_for_notes_file")
 EOF
 
-claude -p \
-    --output-format json \
-    --json-schema "$schema" \
-    --permission-mode dontAsk \
-    --tools "" \
-    < "$prompt_file" > "$response_file"
+codex exec \
+    --skip-git-repo-check \
+    --ask-for-approval never \
+    --sandbox read-only \
+    --model "${CODEX_MODEL:-gpt-5.5}" \
+    --output-schema "$schema_file" \
+    --output-last-message "$response_file" \
+    - < "$prompt_file" > /dev/null
 
-jq -r '.structured_output.meeting_notes_markdown' "$response_file" > "$notes_file"
-jq -r '.structured_output.todo_markdown' "$response_file" > "$todo_file"
+jq -r '.meeting_notes_markdown' "$response_file" > "$notes_file"
+jq -r '.todo_markdown' "$response_file" > "$todo_file"
 
 printf 'Wrote meeting notes to %s\n' "$meeting_dir"
